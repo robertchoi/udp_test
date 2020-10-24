@@ -25,12 +25,12 @@ int addrlen = sizeof(servaddr); //서버 주소의 size를 저장
 
 typedef struct _packet
 {
-    int _msgIndex;
-    int _cntRepeat;
-    long _timeMsgSent;
-    long _timeDetected;
-    int _typeError;
-    //char _strDesc[NOTI_DESC_SIZE];
+	int		_msgIndex;		//메시지 ID값(최소 송신시 0에서 1씩 증가, 이미지 인식시에만 증가)
+	int		_cntRepeat;		//메시지는 2번 전송되며, 재전송되는 메시지의 순서를 
+	int		_typeError;		//비정상 화면의 유형(1: , 2: ,  3: , 4: , 5: , 999: 정의되지 않은 오류)
+	long	_timeMsgSent;	//인식 메시지를 송출시키는 시간(현재 지역의 시간을 Unix Time 포맷 저장)
+	long	_timeDetected;	//비정상 이미지가 인식된 시간(현재 지역의 시간을 Unix Time 포맷 저장)
+	//char	_strDesc[NOTI_DESC_SIZE];	//기타 부가 설명 저장용 변수
 } NotiPacket;
 
 
@@ -48,7 +48,7 @@ void delay(clock_t n)
     while(clock() - start < n);
 }
 
-int makeNotiPacket(NotiPacket *npSend, int index, long detectTime, int errorCode);
+int makeNotiPacket(NotiPacket *npSend, int index, long detectTime, int errorCode, int cntRepeat);
 
 
 int main(int argc, char *argv[]) {
@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
     npDetected._typeError = 0;
 
 
-    while(1)
+//    while(1)
     {
         //서버 주소 구조
         memset(&servaddr, 0, addrlen); //bzero((char *)&servaddr, sizeof(servaddr));
@@ -94,9 +94,10 @@ int main(int argc, char *argv[]) {
         tLocal = mktime(timeinfo);
 
 
-        makeNotiPacket(&npDetected, nIdx++, (long)tLocal, 1);
+        makeNotiPacket(&npDetected, nIdx++, (long)tLocal, 1, 0);
+        printf("%d, %d\n", (int)sizeof (npDetected._cntRepeat),(int)sizeof (npDetected._timeDetected));
 
-        printf("%d, %d, %d, %d, %d\n", npDetected._typeError, npDetected._msgIndex, (int)sizeof (npDetected),npDetected._timeDetected, npDetected._timeMsgSent);
+        printf("%d, %d, %d, %d\n", npDetected._msgIndex, (int)sizeof (npDetected),(int)npDetected._timeDetected, (int)npDetected._timeMsgSent);
 
         if((sendto(s, &npDetected, sizeof (npDetected), 0, (struct sockaddr *)&servaddr, addrlen)) < 0) {
             perror("sendto fail");
@@ -105,8 +106,41 @@ int main(int argc, char *argv[]) {
 
         delay(1000000);
 
-        if(nIdx > 5)
-            break;
+        makeNotiPacket(&npDetected, nIdx++, (long)tLocal, 1, 1);
+        if((sendto(s, &npDetected, sizeof (npDetected), 0, (struct sockaddr *)&servaddr, addrlen)) < 0) {
+            perror("sendto fail");
+            exit(0);
+        }
+
+        delay(3000000);
+
+        time(&tLocal);
+        timeinfo = gmtime(&tLocal);
+        tLocal = mktime(timeinfo);
+
+
+        makeNotiPacket(&npDetected, nIdx++, (long)tLocal, 2, 0);
+        printf("%d, %d\n", (int)sizeof (npDetected._cntRepeat),(int)sizeof (npDetected._timeDetected));
+
+        printf("%d, %d, %d, %d\n", npDetected._msgIndex, (int)sizeof (npDetected),(int)npDetected._timeDetected, (int)npDetected._timeMsgSent);
+
+        if((sendto(s, &npDetected, sizeof (npDetected), 0, (struct sockaddr *)&servaddr, addrlen)) < 0) {
+            perror("sendto fail");
+            exit(0);
+        }
+
+        delay(1000000);
+
+        makeNotiPacket(&npDetected, nIdx++, (long)tLocal, 2, 1);
+        if((sendto(s, &npDetected, sizeof (npDetected), 0, (struct sockaddr *)&servaddr, addrlen)) < 0) {
+            perror("sendto fail");
+            exit(0);
+        }
+
+
+
+//        if(nIdx > 5)
+//            break;
 
     }
 
@@ -116,13 +150,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int makeNotiPacket(NotiPacket *npSend, int index, long detectTime, int errorCode)
+int makeNotiPacket(NotiPacket *npSend, int index, long detectTime, int errorCode, int cntRepeat)
 {
     time_t tLocal;
     time(&tLocal);
 
     npSend->_msgIndex = index;
     npSend->_typeError = errorCode;
+    npSend->_cntRepeat = cntRepeat;
     npSend->_timeMsgSent = (long)tLocal;
     npSend->_timeDetected = detectTime;
 
